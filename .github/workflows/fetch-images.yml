@@ -1,0 +1,42 @@
+name: Fetch product images
+
+# Crawls elektrodvorak.cz for the catalog's product photos and commits them to the
+# branch the workflow was started from. Run it by hand from the Actions tab
+# (or `gh workflow run fetch-images.yml --ref <branch>`).
+on:
+  workflow_dispatch:
+    inputs:
+      max_pages:
+        description: Crawl cap (pages)
+        default: "4000"
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fetch-images-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/fetch-images.mjs
+        env:
+          MAX_PAGES: ${{ inputs.max_pages }}
+      - name: Commit images and manifest
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/products src/data/images.json
+          if git diff --cached --quiet; then echo "no image changes"; exit 0; fi
+          git commit -m "Add product photos fetched from elektrodvorak.cz"
+          git push
