@@ -75,40 +75,43 @@ function jsonLd(body) {
   return out;
 }
 function extractProduct(url, body, from) {
+  // Markup of elektrodvorak.cz (September 2026): h1.h1 title, p.number product code, .product-img gallery with
+  // data-lightbox links to full-size photos under /produkty/<id>/, ul.ul-price-new price, ul.ul-availability,
+  // ul.ul-producer brand, #popis-produktu .popis_rozsireny description, table.table-product misc rows.
   const ld = jsonLd(body);
-  const prod = ld.find((x) => /Product/i.test(String(x["@type"])));
   const crumbs = ld.find((x) => /BreadcrumbList/i.test(String(x["@type"])))?.itemListElement?.map((e) => strip(e.name ?? e.item?.name ?? "")).filter(Boolean) ?? [];
   if (!crumbs.length) {
     const nav = body.match(/<(?:ol|ul|nav|div)[^>]*(?:breadcrumb|drobeck)[^>]*>([\s\S]*?)<\/(?:ol|ul|nav|div)>/i)?.[1];
     if (nav) for (const m of nav.matchAll(/<a[^>]*>([\s\S]*?)<\/a>/gi)) { const t = strip(m[1]); if (t) crumbs.push(t); }
   }
-  const h1 = strip(body.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? "");
-  const title = h1 || strip(prod?.name) || decode(body.match(/property="og:title"\s+content="([^"]+)"/i)?.[1] ?? "");
-  const image = prod?.image ? (Array.isArray(prod.image) ? prod.image[0] : typeof prod.image === "object" ? prod.image.url : prod.image) : body.match(/property="og:image"\s+content="([^"]+)"/i)?.[1];
-  const offers = prod?.offers ? (Array.isArray(prod.offers) ? prod.offers[0] : prod.offers) : null;
-  const priceText = offers?.price ?? body.match(/itemprop="price"[^>]*content="([\d.,]+)"/i)?.[1] ?? body.match(/(\d{1,3}(?:[  ]\d{3})*(?:,\d+)?)\s*Kč/)?.[1];
-  const price = priceText ? Math.round(Number(String(priceText).replace(/[  ]/g, "").replace(",", "."))) : null;
-  const brand = strip(typeof prod?.brand === "object" ? prod.brand?.name : prod?.brand) || strip(body.match(/(?:Výrobce|Značka)[^<]*<\/(?:th|dt|span|strong|td)>\s*<(?:td|dd|span|a)[^>]*>([\s\S]*?)<\//i)?.[1] ?? "") || title.split(" ")[0];
-  const description = strip(prod?.description) || decode(body.match(/name="description"\s+content="([^"]*)"/i)?.[1] ?? "") || decode(body.match(/property="og:description"\s+content="([^"]*)"/i)?.[1] ?? "");
-  const availability = strip(offers?.availability ?? "").replace(/.*\//, "") || (/skladem/i.test(body) ? "InStock" : "");
-  const sku = strip(prod?.sku ?? prod?.mpn ?? body.match(/(?:Kód|Katalogové číslo|EAN)[^<]*<\/(?:th|dt|span|strong|td)>\s*<(?:td|dd|span)[^>]*>([\s\S]*?)<\//i)?.[1] ?? "");
-  // Specs: table rows or dt/dd pairs; keep short, textual pairs only.
-  const specs = [];
-  for (const m of body.matchAll(/<tr[^>]*>\s*<t[hd][^>]*>([\s\S]*?)<\/t[hd]>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<\/tr>/gi)) {
-    const k = strip(m[1]), v = strip(m[2]);
-    if (k && v && k.length <= 40 && v.length <= 80 && !/cena|kč|dostupnost|kód|ean/i.test(k)) specs.push([k.replace(/:$/, ""), v]);
-    if (specs.length >= 14) break;
-  }
-  if (specs.length < 3) for (const m of body.matchAll(/<dt[^>]*>([\s\S]*?)<\/dt>\s*<dd[^>]*>([\s\S]*?)<\/dd>/gi)) {
-    const k = strip(m[1]), v = strip(m[2]);
-    if (k && v && k.length <= 40 && v.length <= 80) specs.push([k.replace(/:$/, ""), v]);
-    if (specs.length >= 14) break;
-  }
-  const energy = body.match(/(?:energetick[áé] t[řr][íi]d[ay]|Energy class)[^A-G]{0,40}\b([A-G])\b(?![+])/i)?.[1] ?? specs.find(([k]) => /energetick/i.test(k))?.[1]?.match(/\b([A-G])\b/)?.[1] ?? null;
-  const oldPriceText = body.match(/(?:Původní cena|Běžná cena|před slevou)[^\d]{0,60}(\d{1,3}(?:[  ]\d{3})*)\s*Kč/i)?.[1];
+  const h1At = body.search(/<h1[^>]*>/i);
+  const main = h1At >= 0 ? body.slice(h1At) : body;               // everything from the title down
+  const related = main.search(/Mohlo by se v[áa]m tak[ée] l[íi]bit|podobn[ée] produkty/i);
+  const own = related > 0 ? main.slice(0, related) : main;         // product's own block, before "you may also like"
+  const title = strip(own.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? "");
+  const sku = strip(own.match(/class="number">\s*K[óo]d produktu:?\s*([^<]+)</i)?.[1] ?? "");
+  const gallery = own.match(/<div class="product-img">([\s\S]*?)<div class="col-sm-30">/i)?.[1] ?? own.slice(0, 40000);
+  const images = [...new Set([...gallery.matchAll(/href="(https?:\/\/[^"]*\/produkty\/\d+\/\d+\.(?:jpe?g|png|webp))"/gi)].map((m) => decode(m[1])))];
+  if (!images.length) for (const m of gallery.matchAll(/src="(https?:\/\/[^"]*\/produkty\/\d+\/(?:middle-|small-)?\d+\.(?:jpe?g|png|webp))"/gi)) images.push(decode(m[1]).replace(/\/(middle|small)-/, "/"));
+  const money = (t) => { const n = Number(decode(t).replace(/[^\d,]/g, "").replace(",", ".")); return Number.isFinite(n) && n > 0 ? Math.round(n) : null; };
+  const price = money(own.match(/class="ul-price-new">([\s\S]*?)<\/li>/i)?.[1] ?? "");
+  const oldPrice = money(own.match(/class="ul-price-old">([\s\S]*?)<\/li>/i)?.[1] ?? "");
+  const labels = [...own.matchAll(/<li class="ul-labels-[a-z]+">([^<]*)<\/li>/gi)].map((m) => strip(m[1]));
+  const availability = [...(own.match(/ul-availability">([\s\S]*?)<\/ul>/i)?.[1] ?? "").matchAll(/<li>([\s\S]*?)<\/li>/gi)].map((m) => strip(m[1]));
+  const brand = strip(own.match(/ul-producer"><li><a[^>]*>([^<]*)<\/a>/i)?.[1] ?? "") || title.split(" ")[0];
+  const popis = body.match(/<div class="popis_rozsireny">([\s\S]*?)<div class="popis_rozsireny_btn">/i)?.[1] ?? body.match(/<div class="popis_rozsireny">([\s\S]*?)<\/div>\s*<\/div>/i)?.[1] ?? "";
+  const paragraphs = [...popis.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi)].map((m) => strip(m[1])).filter((t) => t && t !== " ");
+  const bullets = [...popis.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/gi)].map((m) => strip(m[1])).filter(Boolean);
+  // "Key: value" bullets (technical specification lists) become specs; the rest stay as selling points.
+  const specs = []; const points = [];
+  for (const b of bullets) { const m = b.match(/^([^:]{2,40}):\s*(.{1,120})$/); if (m) specs.push([m[1].trim(), m[2].trim()]); else points.push(b); }
+  for (const m of own.matchAll(/<tr>\s*<td>([^<]*)<\/td>\s*<td>([^<]*)<\/td>\s*<\/tr>/gi)) { const k = strip(m[1]).replace(/:$/, ""), v = strip(m[2]); if (k && v && !/k[óo]d produktu|v[ýy]robce/i.test(k)) specs.push([k, v]); }
+  const text = paragraphs.join(" ");
+  const energy = (text + " " + bullets.join(" ")).match(/energetick[áé]\s+t[řr][íi]d[aěy]\s*:?\s*([A-G])\b(?!\+)/i)?.[1]?.toUpperCase() ?? null;
   return {
-    url, title, brand, price, oldPrice: oldPriceText ? Number(oldPriceText.replace(/[  ]/g, "")) : null, sku, energy,
-    image: image ? new URL(decode(image), url).href : null, description: description.slice(0, 600), availability, crumbs, specs, from,
+    url, id: url.match(/pro(\d+)\.html/)?.[1] ?? null, title, brand, sku, price, oldPrice, labels, availability, energy,
+    image: images[0] ?? null, images, short: paragraphs[0]?.slice(0, 400) ?? "", description: text.slice(0, 2500), points: points.slice(0, 12), specs: specs.slice(0, 20),
+    crumbs, from,
   };
 }
 
@@ -116,5 +119,5 @@ function extractProduct(url, body, from) {
 await mkdir("harvest", { recursive: true });
 const cats = [...categories.entries()].map(([url, c]) => ({ url, ...c }));
 await writeFile(OUT, JSON.stringify({ harvestedAt: new Date().toISOString(), visited, categories: cats, products }, null, 1));
-const withImg = products.filter((p) => p.image).length, withPrice = products.filter((p) => p.price).length, withCrumbs = products.filter((p) => p.crumbs.length).length;
-console.log(`wrote ${OUT}: ${products.length} products (${withImg} with image, ${withPrice} with price, ${withCrumbs} with breadcrumbs)`);
+const n = (f) => products.filter(f).length;
+console.log(`wrote ${OUT}: ${products.length} products (${n((p) => p.image)} with image, ${n((p) => p.price)} with price, ${n((p) => p.crumbs.length)} with breadcrumbs, ${n((p) => p.short)} with description, ${n((p) => p.energy)} with energy class)`);
