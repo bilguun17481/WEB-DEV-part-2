@@ -74,7 +74,7 @@ export const dict = {
     reset: { cs: "Zrušit filtr", en: "Clear filter" },
   },
   news: [
-    { tag: { cs: "Novinka", en: "New" }, title: { cs: "Televize LG OLED 2026 už na prodejnách", en: "LG OLED 2026 televisions now in store" }, text: { cs: "Řady B4 a C4 ve všech velikostech od 48 do 77 palců. Přijďte si obraz porovnat vedle sebe v Čáslavi a Golčově Jeníkově.", en: "The B4 and C4 ranges in every size from 48 to 77 inches. Compare them side by side in Čáslav and Golčův Jeníkov." } },
+    { tag: { cs: "Novinka", en: "New" }, title: { cs: "QLED televize JVC a Sencor s Google TV a webOS", en: "JVC and Sencor QLED televisions with Google TV and webOS" }, text: { cs: "Nová řada od 43 do 65 palců s Mini LED podsvícením a Dolby Atmos. Přijďte si obraz porovnat vedle sebe v Čáslavi a Golčově Jeníkově.", en: "A new range from 43 to 65 inches with Mini LED backlighting and Dolby Atmos. Compare them side by side in Čáslav and Golčův Jeníkov." } },
     { tag: { cs: "Akce", en: "Offer" }, title: { cs: "Odvoz starého spotřebiče zdarma", en: "Free removal of your old appliance" }, text: { cs: "Ke každé pračce, chladničce a myčce dovezené naším autem odvezeme starý spotřebič k ekologické likvidaci bez příplatku.", en: "With every washer, fridge or dishwasher delivered by our van, we take your old appliance for recycling at no charge." } },
     { tag: { cs: "Zahrada", en: "Garden" }, title: { cs: "Zazimování sekaček a příprava fréz", en: "Winterising mowers and preparing snow throwers" }, text: { cs: "Objednejte se na podzimní servis. Výměna oleje, ostření nožů, konzervace a uskladnění na přání.", en: "Book an autumn service. Oil change, blade sharpening, preservation and storage on request." } },
   ],
@@ -147,10 +147,10 @@ export const dict = {
   },
   service: {
     title: { cs: "Servis a reklamace", en: "Service and claims" },
-    lead: { cs: "Autorizovaný servis zahradní techniky VARI a Husqvarna a nářadí Narex. Reklamace spotřebičů všech značek vyřídíme za vás na kterékoli prodejně.", en: "Authorised service for VARI and Husqvarna garden machinery and Narex tools. We handle appliance claims for every brand at any of our stores." },
+    lead: { cs: "Autorizovaný servis zahradní techniky VARI a AL-KO, opravy nářadí Einhell, Graphite a Makita. Reklamace spotřebičů všech značek vyřídíme za vás na kterékoli prodejně.", en: "Authorised service for VARI and AL-KO garden machinery, repairs of Einhell, Graphite and Makita tools. We handle appliance claims for every brand at any of our stores." },
     items: [
       { cs: "Záruční a pozáruční servis sekaček, kultivátorů a pil", en: "Warranty and post-warranty service for mowers, tillers and saws" },
-      { cs: "Opravy elektrického a aku nářadí Narex, Makita a Bosch", en: "Repairs of Narex, Makita and Bosch power and cordless tools" },
+      { cs: "Opravy elektrického a aku nářadí Einhell, Graphite a Makita", en: "Repairs of Einhell, Graphite and Makita power and cordless tools" },
       { cs: "Reklamace televizí a spotřebičů, svoz k výrobci", en: "TV and appliance claims, collection to the manufacturer" },
       { cs: "Nastavení počítačů, přenos dat a instalace Windows", en: "Computer set-up, data transfer and Windows installation" },
       { cs: "Dovoz, zapojení a odvoz starých spotřebičů", en: "Delivery, installation and removal of old appliances" },
