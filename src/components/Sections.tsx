@@ -30,7 +30,7 @@ export function Sections({ sections, products, categories, count }: { sections: 
                   {productImg ? (
                     <div className="absolute inset-0" style={{ background: "radial-gradient(120% 80% at 70% 40%, #3a3a3a 0%, #1a1a1a 55%, #0b0b0b 100%)" }}>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={productImg} alt="" className="absolute left-[15%] top-[4%] h-[36%] w-[70%] object-contain sm:left-auto sm:right-[5%] sm:top-1/2 sm:h-[76%] sm:w-[52%] sm:-translate-y-1/2" />
+                      <img src={productImg} alt="" className="absolute left-[20%] top-[3%] h-[30%] w-[60%] object-contain sm:left-auto sm:right-[5%] sm:top-1/2 sm:h-[76%] sm:w-[52%] sm:-translate-y-1/2" />
                     </div>
                   ) : (
                   <BackgroundMedia media={s.media} fallback={<Photo label={T(s.title)} tone="dark" ratio="absolute inset-0" hint={T(s.title)} />} />
