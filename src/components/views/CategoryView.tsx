@@ -5,6 +5,7 @@ import { BackgroundMedia } from "@/components/Media";
 import { ProductCard } from "@/components/ProductCard";
 import type { EnergyClass } from "@/data/catalog";
 import { dict, useLang } from "@/lib/i18n";
+import { categoryImage } from "@/lib/images";
 import type { ShopProduct, Text } from "@/lib/types";
 
 type Cat = { slug: string; label: Text; blurb: Text; image_url: string | null; video_url: string | null };
@@ -26,7 +27,8 @@ export function CategoryView({ category: cat, products: all }: { category: Cat; 
       <span className={active ? "font-semibold" : ""}>{children}</span>
     </label>
   );
-  const media = cat.video_url ? { kind: "video" as const, url: cat.video_url } : cat.image_url ? { kind: "image" as const, url: cat.image_url } : undefined;
+  const wide = categoryImage(cat.slug, "wide");
+  const media = cat.video_url ? { kind: "video" as const, url: cat.video_url } : cat.image_url ? { kind: "image" as const, url: cat.image_url } : wide ? { kind: "image" as const, url: wide } : undefined;
 
   return (
     <>

@@ -5,7 +5,7 @@ import { ProductCard } from "@/components/ProductCard";
 import { BackgroundMedia, Video } from "@/components/Media";
 import { brands } from "@/data/catalog";
 import { dict, useLang } from "@/lib/i18n";
-import { imageFor } from "@/lib/images";
+import { categoryImage, imageFor } from "@/lib/images";
 import type { Section, ShopProduct, Text } from "@/lib/types";
 
 type Cat = { slug: string; label: Text; blurb: Text; image_url: string | null; video_url: string | null };
@@ -62,7 +62,7 @@ export function Sections({ sections, products, categories, count }: { sections: 
                   {s.categories.map((slug) => categories.find((c) => c.slug === slug)).filter(Boolean).map((c) => (
                     <Link key={c!.slug} href={`/${c!.slug}/`} className="group relative block overflow-hidden text-paper">
                       <div className="relative aspect-[3/4] transition-transform duration-700 group-hover:scale-[1.03]">
-                        <BackgroundMedia media={c!.image_url ? { kind: "image", url: c!.image_url } : undefined} size="card" fallback={<Photo label={T(c!.label)} tone="dark" ratio="absolute inset-0" />} />
+                        <BackgroundMedia media={c!.image_url ? { kind: "image", url: c!.image_url } : categoryImage(c!.slug, "tile") ? { kind: "image", url: categoryImage(c!.slug, "tile")! } : undefined} size="card" fallback={<Photo label={T(c!.label)} tone="dark" ratio="absolute inset-0" />} />
                       </div>
                       <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
                       <div className="absolute inset-x-0 bottom-0 p-5">

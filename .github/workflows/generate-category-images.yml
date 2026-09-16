@@ -1,0 +1,44 @@
+name: Generate category images
+
+# Creates AI-generated category banners with Google Gemini and commits them to the
+# branch the workflow was started from. Needs the GEMINI_API_KEY repository secret
+# (Settings → Secrets and variables → Actions). Without it the run fails fast and
+# the composed packshot banners stay in place.
+on:
+  workflow_dispatch:
+    inputs:
+      categories:
+        description: Space-separated category slugs (empty = all six)
+        required: false
+        default: ""
+      model:
+        description: Gemini image model
+        required: false
+        default: gemini-2.5-flash-image
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/generate-category-images.mjs ${{ inputs.categories }}
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ inputs.model }}
+      - name: Commit banners and manifest
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/categories src/data/categoryImages.json
+          if git diff --cached --quiet; then echo "no changes"; exit 0; fi
+          git commit -m "Add AI-generated category banners"
+          git push

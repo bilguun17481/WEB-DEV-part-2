@@ -78,3 +78,10 @@ If that shows a 404 after a green run, set Settings → Pages → Source to *Dep
 ## Product images from elektrodvorak.cz
 
 `node scripts/fetch-images.mjs` downloads the photo of every catalog product from the URL recorded in `src/data/imageSources.json` into `public/products/` and writes `src/data/images.json` (slug → path), which product cards, galleries, the cart and the home hero read. The *Fetch product images* workflow runs it on GitHub Actions and commits the photos to the branch it was started from. Products with photos uploaded in the admin use those first.
+
+## Category banners
+
+Home tiles and category headers use `public/categories/<slug>-tile.jpg` (3:4) and `<slug>-wide.jpg` (landscape), listed in `src/data/categoryImages.json`; a banner uploaded in the admin (Content → Categories) always wins over the bundled one.
+
+- `node scripts/compose-category-images.mjs` composes them from the product packshots with the bundled Chromium: three products per category on the site's studio-grey backdrop, white backgrounds keyed out. No network or keys needed; this is what the repo ships with.
+- `node scripts/generate-category-images.mjs` replaces them with AI-generated scenes from Google Gemini (`GEMINI_API_KEY`, key from https://aistudio.google.com/apikey; model via `GEMINI_MODEL`, default `gemini-2.5-flash-image`). The *Generate category images* workflow runs it on GitHub Actions with the `GEMINI_API_KEY` repository secret and commits the results. Prompts live in the script; they ask for editorial product photography with room for the text overlay and no text or logos.
