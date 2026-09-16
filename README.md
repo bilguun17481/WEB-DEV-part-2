@@ -16,7 +16,7 @@ The site is a sibling of the [Moto Dvořák storefront](https://github.com/bilgu
 | Layer | What | Where |
 | --- | --- | --- |
 | Storefront | Next.js 16 App Router, Tailwind 4, CZ/EN toggle, cart, checkout | `src/app`, `src/components` |
-| Catalog and stores | Bundled catalog (55 products, 6 categories), store list, default delivery options | `src/data/catalog.ts`, `src/data/stores.ts`, `src/data/shipping.ts` |
+| Catalog and stores | Catalog generated from the live shop (72 real products, 6 categories), store list, default delivery options | `src/data/catalog.ts`, `scripts/catalog-selection.json`, `src/data/stores.ts`, `src/data/shipping.ts` |
 | Admin | Shopify-style back office at `/admin` | `src/app/admin`, `src/components/admin` |
 | Database, auth, storage | Supabase (Postgres with row-level security, email login, `media` bucket for photos and video) | `supabase/migrations`, `supabase/seed.sql` |
 | Payments | Stripe, GoPay, Comgate, PayPal, bank transfer, cash, behind one adapter interface | `src/lib/payments` |
@@ -69,11 +69,12 @@ If that shows a 404 after a green run, set Settings → Pages → Source to *Dep
 
 ## Catalog, stores and seed data
 
-- `src/data/catalog.ts` holds 55 representative products across the six categories and seeds the database; once Supabase is connected the admin is the source of truth. Prices are indicative and should be checked against the shop's own list.
+- `src/data/catalog.ts` is **generated** from products the shop really sells. `scripts/catalog-selection.json` picks 72 of them by shop product id and adds what the shop page lacks (storefront category, URL slug, English copy, headline size, colours, and a Czech short text where the shop's own is weak); `scripts/build-catalog.mjs` merges that with the harvested shop data (name, brand, current price, energy class, specs, photo URL) and writes `catalog.ts` plus `src/data/imageSources.json`. Edit the selection or `scripts/catalog-header.ts` (types, categories, brands), not the generated file.
+- `scripts/harvest-catalog.mjs` crawls elektrodvorak.cz product pages into `harvest/products.json`. The *Harvest live catalog* workflow runs it on GitHub Actions and commits the JSON to the `harvest-data` branch; locally, `git fetch origin harvest-data && git show origin/harvest-data:harvest/products.json > harvest/products.json`.
 - `src/data/stores.ts` holds the six stores (address, phones, e-mail, hours) and the company contacts. Opening hours come from public business directories and should be re-checked with each store before launch.
 - `src/data/shipping.ts` holds the default delivery and payment options. Each store becomes a free `pickup_<store>` collection method.
 - `node scripts/seed.mjs` regenerates `supabase/seed.sql` from the files above and the default home page.
 
 ## Product images from elektrodvorak.cz
 
-`npm run fetch-images` crawls elektrodvorak.cz, matches page titles to catalog products and downloads each main image into `public/products/`, writing `src/data/images.json`. Products with database images use those first. See `scripts/fetch-images.mjs` for the override map and crawl cap.
+`node scripts/fetch-images.mjs` downloads the photo of every catalog product from the URL recorded in `src/data/imageSources.json` into `public/products/` and writes `src/data/images.json` (slug → path), which product cards, galleries, the cart and the home hero read. The *Fetch product images* workflow runs it on GitHub Actions and commits the photos to the branch it was started from. Products with photos uploaded in the admin use those first.
