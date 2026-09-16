@@ -5,6 +5,7 @@ import { ProductCard } from "@/components/ProductCard";
 import { BackgroundMedia, Video } from "@/components/Media";
 import { brands } from "@/data/catalog";
 import { dict, useLang } from "@/lib/i18n";
+import { imageFor } from "@/lib/images";
 import type { Section, ShopProduct, Text } from "@/lib/types";
 
 type Cat = { slug: string; label: Text; blurb: Text; image_url: string | null; video_url: string | null };
@@ -19,10 +20,13 @@ export function Sections({ sections, products, categories, count }: { sections: 
         switch (s.type) {
           case "hero": {
             const h = s.height === "medium" ? "aspect-[4/5] sm:aspect-[16/8] lg:aspect-[21/8]" : "aspect-[4/5] sm:aspect-[16/9] lg:aspect-[21/9]";
+            // No media set in the page builder: fall back to the featured product's own photo.
+            const productImg = !s.media?.url && s.productSlug ? imageFor(s.productSlug) : undefined;
+            const media = s.media?.url ? s.media : productImg ? { kind: "image" as const, url: productImg } : undefined;
             return (
               <section key={s.id} className="relative text-paper">
                 <div className={`relative ${h}`}>
-                  <BackgroundMedia media={s.media} fallback={<Photo label={T(s.title)} tone="dark" ratio="absolute inset-0" hint={T(s.title)} />} />
+                  <BackgroundMedia media={media} fallback={<Photo label={T(s.title)} tone="dark" ratio="absolute inset-0" hint={T(s.title)} />} />
                 </div>
                 <div className="absolute inset-0" style={{ background: `linear-gradient(to top, rgba(0,0,0,${(s.overlay ?? 60) / 100}), rgba(0,0,0,0.15) 60%, transparent)` }} />
                 <div className={`container-x absolute inset-x-0 bottom-0 pb-10 sm:pb-14 lg:pb-20 ${s.align === "center" ? "text-center" : ""}`}>
