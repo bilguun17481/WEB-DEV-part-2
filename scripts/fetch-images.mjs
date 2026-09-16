@@ -112,8 +112,10 @@ for (const p of catalog) {
     }
   }
   if (!page) {
-    const ranked = candidates.map((c) => ({ c, s: Math.max(score(p.name, c.title), score(`${p.brand} ${p.name}`, c.title)) })).sort((x, y) => y.s - x.s);
-    if (ranked[0] && ranked[0].s >= 0.6) { page = ranked[0].c; how = `words ${ranked[0].s.toFixed(2)}`; }
+    // Word overlap alone picked wrong products (any "sušička s tepelným čerpadlem" scored high), so require the brand too.
+    const sameBrand = candidates.filter((c) => squash(c.title).includes(squash(p.brand)));
+    const ranked = sameBrand.map((c) => ({ c, s: score(p.name, c.title) })).sort((x, y) => y.s - x.s);
+    if (ranked[0] && ranked[0].s >= 0.75) { page = ranked[0].c; how = `words ${ranked[0].s.toFixed(2)}`; }
   }
   if (!page) { report.push(`  ✗ ${p.slug}  (no page matched "${p.brand} ${p.name}")`); continue; }
   const ext = (page.image.match(/\.(png|jpe?g|webp)/i)?.[1] ?? "jpg").toLowerCase().replace("jpeg", "jpg");

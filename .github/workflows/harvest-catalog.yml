@@ -1,0 +1,41 @@
+name: Harvest live catalog
+
+# Crawls elektrodvorak.cz product pages into harvest/products.json and commits that
+# file to the `harvest-data` branch (never to the code branch). Used to rebuild the
+# mockup catalog from products the shop actually sells.
+on:
+  workflow_dispatch:
+    inputs:
+      max_pages:
+        description: Crawl cap (pages)
+        default: "8000"
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: harvest-catalog
+  cancel-in-progress: false
+
+jobs:
+  harvest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/harvest-catalog.mjs
+        env:
+          MAX_PAGES: ${{ inputs.max_pages }}
+      - name: Publish to the harvest-data branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan harvest-data
+          git rm -rq --cached .
+          git add -f harvest/products.json
+          git commit -m "Harvest of elektrodvorak.cz from $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -f origin harvest-data
