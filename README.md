@@ -70,7 +70,7 @@ If that shows a 404 after a green run, set Settings → Pages → Source to *Dep
 ## Catalog, stores and seed data
 
 - `src/data/catalog.ts` holds 55 representative products across the six categories and seeds the database; once Supabase is connected the admin is the source of truth. Prices are indicative and should be checked against the shop's own list.
-- `src/data/stores.ts` holds the six stores (address, phones, e-mail, hours) and the company contacts. Opening hours are placeholders to be confirmed with each store.
+- `src/data/stores.ts` holds the six stores (address, phones, e-mail, hours) and the company contacts. Opening hours come from public business directories and should be re-checked with each store before launch.
 - `src/data/shipping.ts` holds the default delivery and payment options. Each store becomes a free `pickup_<store>` collection method.
 - `node scripts/seed.mjs` regenerates `supabase/seed.sql` from the files above and the default home page.
 

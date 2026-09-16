@@ -1,6 +1,7 @@
 import type { Text } from "@/lib/types";
 
-/** Elektro Dvořák stores. Also used as store-collection shipping methods (id `pickup_<id>`). */
+/** Elektro Dvořák stores. Also used as store-collection shipping methods (id `pickup_<id>`).
+    Opening hours as listed in public directories (Firmy.cz, Živéfirmy, VARI dealer list) in September 2026. */
 export interface Store {
   id: string;
   name: string;
@@ -21,7 +22,7 @@ export const stores: Store[] = [
     name: "Elektro Železářství Dvořák Golčův Jeníkov", city: "Golčův Jeníkov",
     street: "Havlíčkovo náměstí 133", zip: "582 82",
     phones: ["+420 601 382 804", "+420 569 442 203"], email: "jenikov@elektrodvorak.cz",
-    hours: { cs: "Po–Pá 8:00–17:00 · So 8:00–11:00", en: "Mon–Fri 8:00–17:00 · Sat 8:00–11:00" },
+    hours: { cs: "Po–Pá 8:00–17:00 · So 8:00–11:30", en: "Mon–Fri 8:00–17:00 · Sat 8:00–11:30" },
     range: { cs: "Elektro, počítače, hobby, zahrada a železářství", en: "Electro, computers, hobby, garden and hardware" },
   },
   {
@@ -29,7 +30,7 @@ export const stores: Store[] = [
     name: "Elektro Dvořák Čáslav", city: "Čáslav",
     street: "nám. Jana Žižky z Trocnova 163/41", zip: "286 01",
     phones: ["+420 601 382 809", "+420 327 314 655"], email: "caslav@elektrodvorak.cz",
-    hours: { cs: "Po–Pá 8:00–17:00 · So 8:00–11:00", en: "Mon–Fri 8:00–17:00 · Sat 8:00–11:00" },
+    hours: { cs: "Po–Pá 8:00–12:00, 13:00–17:00 · So 8:00–11:00", en: "Mon–Fri 8:00–12:00, 13:00–17:00 · Sat 8:00–11:00" },
     range: { cs: "Elektro, počítače, foto a elektrické nářadí", en: "Electro, computers, photo and power tools" },
   },
   {
@@ -45,7 +46,7 @@ export const stores: Store[] = [
     name: "Elektro Dvořák Světlá nad Sázavou", city: "Světlá nad Sázavou",
     street: "Náměstí Trčků z Lípy 515", zip: "582 91",
     phones: ["+420 601 382 807", "+420 569 456 771"], email: "svetla@elektrodvorak.cz",
-    hours: { cs: "Po–Pá 8:00–17:00 · So 8:00–11:00", en: "Mon–Fri 8:00–17:00 · Sat 8:00–11:00" },
+    hours: { cs: "Po–Pá 8:00–12:00, 13:00–17:00 · So 8:00–11:00", en: "Mon–Fri 8:00–12:00, 13:00–17:00 · Sat 8:00–11:00" },
     range: { cs: "Elektro, počítače, foto a domácí potřeby", en: "Electro, computers, photo and housewares" },
   },
   {
