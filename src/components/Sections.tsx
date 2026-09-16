@@ -21,12 +21,20 @@ export function Sections({ sections, products, categories, count }: { sections: 
           case "hero": {
             const h = s.height === "medium" ? "aspect-[4/5] sm:aspect-[16/8] lg:aspect-[21/8]" : "aspect-[4/5] sm:aspect-[16/9] lg:aspect-[21/9]";
             // No media set in the page builder: fall back to the featured product's own photo.
+            // Shop product photos are packshots on white, so they sit as a spotlight on a dark backdrop
+            // instead of being stretched to cover the whole hero.
             const productImg = !s.media?.url && s.productSlug ? imageFor(s.productSlug) : undefined;
-            const media = s.media?.url ? s.media : productImg ? { kind: "image" as const, url: productImg } : undefined;
             return (
               <section key={s.id} className="relative text-paper">
                 <div className={`relative ${h}`}>
-                  <BackgroundMedia media={media} fallback={<Photo label={T(s.title)} tone="dark" ratio="absolute inset-0" hint={T(s.title)} />} />
+                  {productImg ? (
+                    <div className="absolute inset-0" style={{ background: "radial-gradient(120% 80% at 70% 40%, #3a3a3a 0%, #1a1a1a 55%, #0b0b0b 100%)" }}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={productImg} alt="" className="absolute left-[15%] top-[4%] h-[36%] w-[70%] object-contain sm:left-auto sm:right-[5%] sm:top-1/2 sm:h-[76%] sm:w-[52%] sm:-translate-y-1/2" />
+                    </div>
+                  ) : (
+                  <BackgroundMedia media={s.media} fallback={<Photo label={T(s.title)} tone="dark" ratio="absolute inset-0" hint={T(s.title)} />} />
+                  )}
                 </div>
                 <div className="absolute inset-0" style={{ background: `linear-gradient(to top, rgba(0,0,0,${(s.overlay ?? 60) / 100}), rgba(0,0,0,0.15) 60%, transparent)` }} />
                 <div className={`container-x absolute inset-x-0 bottom-0 pb-10 sm:pb-14 lg:pb-20 ${s.align === "center" ? "text-center" : ""}`}>
