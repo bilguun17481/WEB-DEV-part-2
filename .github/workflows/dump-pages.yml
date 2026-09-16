@@ -1,0 +1,38 @@
+name: Dump sample pages
+
+# Saves the raw HTML of a few elektrodvorak.cz pages to harvest/pages/ on the
+# `harvest-data` branch so the harvest extractor can be tuned against real markup.
+on:
+  workflow_dispatch:
+    inputs:
+      urls:
+        description: Space-separated page URLs
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: harvest-data
+      - name: Download pages
+        run: |
+          mkdir -p harvest/pages
+          i=0
+          for u in ${{ inputs.urls }}; do
+            i=$((i+1))
+            curl -sSL -A "Mozilla/5.0 (compatible; elektrodvorak-mockup-harvest/1.0)" "$u" -o "harvest/pages/page$i.html"
+            echo "$u -> harvest/pages/page$i.html ($(wc -c < harvest/pages/page$i.html) bytes)"
+          done
+      - name: Commit to harvest-data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add harvest/pages
+          git commit -m "Sample pages: ${{ inputs.urls }}" || echo "nothing to commit"
+          git push origin harvest-data
