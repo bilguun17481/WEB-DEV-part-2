@@ -1,0 +1,38 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main, claude/vigilant-newton-ldch9k]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # The Pages mirror is a static storefront: strip the server-only parts before exporting.
+      - run: rm -rf src/app/api src/app/admin src/app/objednavka src/proxy.ts
+      - run: sed -i 's/dynamicParams = true/dynamicParams = false/' 'src/app/produkt/[slug]/page.tsx' 'src/app/[category]/page.tsx'
+      - run: npm run build
+        env:
+          STATIC_EXPORT: "1"
+          NEXT_PUBLIC_BASE_PATH: /WEB-DEV-part-2
+      # Publishes ./out to the gh-pages branch; GitHub Pages serves that branch.
+      - uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./out
+          force_orphan: true
+          commit_message: "Publish site from ${{ github.sha }}"

@@ -1,0 +1,288 @@
+"use client";
+/* Admin data access. `supabaseRepo` talks to the database; `demoRepo` keeps sample data in
+   localStorage so the admin can be explored before a Supabase project exists. */
+import { products as localProducts, categories as localCategories, isBulky } from "@/data/catalog";
+import { defaultShippingMethods } from "@/data/shipping";
+import { company } from "@/data/stores";
+import { dict } from "@/lib/i18n";
+import { supabaseConfigured } from "@/lib/supabase/env";
+import { supabaseBrowser } from "@/lib/supabase/client";
+import { defaultFeatured, defaultHome } from "@/lib/defaultHome";
+import { resizeImage, SIZES, variantPath } from "@/lib/mediaVariants";
+import type { Customer, Discount, MediaItem, Order, Page, PaymentMethod, ShippingMethod, ShopProduct, Text } from "@/lib/types";
+
+export interface Profile { id: string; email: string | null; full_name: string | null; role: "owner" | "admin" | "staff"; created_at: string }
+export interface CategoryRow { slug: string; label: Text; blurb: Text; image_url: string | null; video_url: string | null; sort: number }
+export interface SalesDay { day: string; orders: number; revenue: number }
+
+export interface Repo {
+  mode: "supabase" | "demo";
+  orders: { list(): Promise<Order[]>; get(id: string): Promise<Order | null>; update(id: string, patch: Partial<Order>): Promise<void> };
+  products: { list(): Promise<ShopProduct[]>; get(id: string): Promise<ShopProduct | null>; save(p: Partial<ShopProduct> & { slug: string }): Promise<string>; remove(id: string): Promise<void> };
+  categories: { list(): Promise<CategoryRow[]>; save(c: CategoryRow): Promise<void> };
+  customers: { list(): Promise<Customer[]> };
+  discounts: { list(): Promise<Discount[]>; save(d: Partial<Discount>): Promise<void>; remove(id: string): Promise<void> };
+  pages: { list(): Promise<Page[]>; get(slug: string): Promise<Page | null>; save(p: Page): Promise<void>; remove(slug: string): Promise<void> };
+  media: {
+    list(): Promise<MediaItem[]>;
+    upload(file: File, onProgress?: (pct: number) => void, folder?: string): Promise<MediaItem>;
+    remove(item: MediaItem): Promise<void>;
+    /** Move one file into another folder ("" = top level). Returns the updated row with its new URL. */
+    move(item: MediaItem, folder: string): Promise<MediaItem>;
+    /** Folders that exist even while empty. Folders with files are derived from paths. */
+    listFolders(): Promise<string[]>;
+    saveFolders(folders: string[]): Promise<void>;
+    /** Create the thumb and card variants for one stored image. Returns false when the browser cannot decode it. */
+    makeVariants(item: MediaItem): Promise<boolean>;
+    /** True when the variants already exist for the item. */
+    hasVariants(item: MediaItem): Promise<boolean>;
+  };
+  settings: { get<T>(key: string): Promise<T | null>; set(key: string, value: unknown): Promise<void> };
+  shipping: { list(): Promise<ShippingMethod[]>; save(m: ShippingMethod): Promise<void>; remove(id: string): Promise<void> };
+  payments: { list(): Promise<PaymentMethod[]>; save(m: PaymentMethod): Promise<void> };
+  team: { list(): Promise<Profile[]> };
+  salesByDay(days: number): Promise<SalesDay[]>;
+}
+
+/* ───────────── Supabase ───────────── */
+const rowToProduct = (r: Record<string, unknown>): ShopProduct => ({
+  id: r.id as string, slug: r.slug as string, brand: r.brand as string, category: r.category as ShopProduct["category"], name: r.name as string,
+  price: Number(r.price), oldPrice: r.old_price == null ? undefined : Number(r.old_price), energy: (r.energy_class as ShopProduct["energy"]) ?? "—",
+  tags: (r.tags as ShopProduct["tags"]) ?? [], power: (r.power as string) ?? undefined, size: (r.size as string) ?? undefined,
+  short: (r.short as Text) ?? { cs: "", en: "" }, specs: (r.specs as ShopProduct["specs"]) ?? [], colors: (r.colors as string[]) ?? [],
+  status: r.status as ShopProduct["status"], stock: r.stock as number, sku: r.sku as string | null, images: (r.images as ShopProduct["images"]) ?? [],
+  videos: (r.videos as ShopProduct["videos"]) ?? [], description: (r.description as Text) ?? { cs: "", en: "" }, featured: Boolean(r.featured),
+});
+const productToRow = (p: Partial<ShopProduct>) => ({
+  slug: p.slug, brand: p.brand, category: p.category, name: p.name, price: p.price ?? 0, old_price: p.oldPrice ?? null, energy_class: p.energy ?? "—",
+  power: p.power ?? null, size: p.size ?? null, short: p.short ?? {}, description: p.description ?? {}, specs: p.specs ?? [], colors: p.colors ?? [],
+  tags: p.tags ?? [], status: p.status ?? "draft", stock: p.stock ?? 0, sku: p.sku ?? null, images: p.images ?? [], videos: p.videos ?? [], featured: p.featured ?? false,
+});
+
+function supabaseRepo(): Repo {
+  const sb = supabaseBrowser();
+  const fail = (e: { message: string } | null) => { if (e) throw new Error(e.message); };
+  const uploadVariants = async (path: string, blob: Blob) => {
+    let ok = true;
+    for (const size of ["thumb", "card"] as const) {
+      const small = await resizeImage(blob, SIZES[size]);
+      if (!small) { ok = false; continue; }
+      const { error } = await sb.storage.from("media").upload(variantPath(path, size), small, { contentType: "image/webp", upsert: true });
+      if (error) ok = false;
+    }
+    return ok;
+  };
+  return {
+    mode: "supabase",
+    orders: {
+      async list() { const { data, error } = await sb.from("orders").select("*").order("created_at", { ascending: false }).limit(500); fail(error); return (data ?? []) as Order[]; },
+      async get(id) { const { data } = await sb.from("orders").select("*").eq("id", id).maybeSingle(); return (data as Order) ?? null; },
+      async update(id, patch) { const { error } = await sb.from("orders").update(patch).eq("id", id); fail(error); },
+    },
+    products: {
+      async list() { const { data, error } = await sb.from("products").select("*").order("sort"); fail(error); return (data ?? []).map(rowToProduct); },
+      async get(id) { const { data } = await sb.from("products").select("*").eq("id", id).maybeSingle(); return data ? rowToProduct(data) : null; },
+      async save(p) {
+        if (p.id) { const { error } = await sb.from("products").update(productToRow(p)).eq("id", p.id); fail(error); return p.id; }
+        const { data, error } = await sb.from("products").insert(productToRow(p)).select("id").single(); fail(error); return data!.id as string;
+      },
+      async remove(id) { const { error } = await sb.from("products").delete().eq("id", id); fail(error); },
+    },
+    categories: {
+      async list() { const { data } = await sb.from("categories").select("*").order("sort"); return (data ?? []) as CategoryRow[]; },
+      async save(c) { const { error } = await sb.from("categories").upsert(c); fail(error); },
+    },
+    customers: { async list() { const { data } = await sb.from("customers").select("*").order("created_at", { ascending: false }); return (data ?? []) as Customer[]; } },
+    discounts: {
+      async list() { const { data } = await sb.from("discounts").select("*").order("created_at", { ascending: false }); return (data ?? []) as Discount[]; },
+      async save(d) { const { error } = await sb.from("discounts").upsert(d); fail(error); },
+      async remove(id) { const { error } = await sb.from("discounts").delete().eq("id", id); fail(error); },
+    },
+    pages: {
+      async list() { const { data } = await sb.from("pages").select("*").order("slug"); return (data ?? []) as Page[]; },
+      async get(slug) { const { data } = await sb.from("pages").select("*").eq("slug", slug).maybeSingle(); return (data as Page) ?? null; },
+      async save(p) { const { error } = await sb.from("pages").upsert({ slug: p.slug, title: p.title, sections: p.sections, status: p.status, seo: p.seo }); fail(error); },
+      async remove(slug) { const { error } = await sb.from("pages").delete().eq("slug", slug); fail(error); },
+    },
+    media: {
+      async list() { const { data } = await sb.from("media").select("*").order("created_at", { ascending: false }); return (data ?? []) as MediaItem[]; },
+      async upload(file, onProgress, folder) {
+        const kind = file.type.startsWith("video/") ? "video" : file.type.startsWith("image/") ? "image" : "file";
+        const clean = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-|-$/g, "");
+        const safe = clean(file.name).toLowerCase();
+        const dir = folder ? folder.split("/").filter(Boolean).map(clean).join("/") : "";
+        const path = dir ? `${kind}s/${dir}/${safe}` : `${kind}s/${Date.now()}-${safe}`;
+        onProgress?.(10);
+        const { error } = await sb.storage.from("media").upload(path, file, { contentType: file.type, upsert: true });
+        fail(error);
+        onProgress?.(70);
+        if (kind === "image") await uploadVariants(path, file);
+        onProgress?.(90);
+        const url = sb.storage.from("media").getPublicUrl(path).data.publicUrl;
+        const { data, error: e2 } = await sb.from("media").insert({ path, url, kind, mime: file.type, size: file.size, alt: {} }).select("*").single();
+        fail(e2); onProgress?.(100);
+        return data as MediaItem;
+      },
+      async remove(item) { await sb.storage.from("media").remove([item.path, variantPath(item.path, "thumb"), variantPath(item.path, "card")]); const { error } = await sb.from("media").delete().eq("id", item.id); fail(error); },
+      async move(item, folder) {
+        const clean = (x: string) => x.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-|-$/g, "");
+        const parts = item.path.split("/");
+        const kindDir = /^(images|videos|files)$/.test(parts[0]) ? parts[0] : "images";
+        const name = parts[parts.length - 1];
+        const dir = folder.split("/").filter(Boolean).map(clean).join("/");
+        const newPath = dir ? `${kindDir}/${dir}/${name}` : `${kindDir}/${name}`;
+        if (newPath === item.path) return item;
+        const { error } = await sb.storage.from("media").move(item.path, newPath); fail(error);
+        if (item.kind === "image") for (const size of ["thumb", "card"] as const) await sb.storage.from("media").move(variantPath(item.path, size), variantPath(newPath, size)).catch(() => {});
+        const url = sb.storage.from("media").getPublicUrl(newPath).data.publicUrl;
+        const { data, error: e2 } = await sb.from("media").update({ path: newPath, url }).eq("id", item.id).select("*").single(); fail(e2);
+        return data as MediaItem;
+      },
+      async listFolders() { const { data } = await sb.from("settings").select("value").eq("key", "media_folders").maybeSingle(); return ((data?.value as { list?: string[] })?.list) ?? []; },
+      async makeVariants(item) { if (item.kind !== "image") return false; const r = await fetch(item.url); if (!r.ok) return false; return uploadVariants(item.path, await r.blob()); },
+      async hasVariants(item) { if (item.kind !== "image") return true; const url = sb.storage.from("media").getPublicUrl(variantPath(item.path, "card")).data.publicUrl; const r = await fetch(url, { method: "HEAD" }).catch(() => null); return Boolean(r && r.ok); },
+      async saveFolders(folders) { const { error } = await sb.from("settings").upsert({ key: "media_folders", value: { list: folders } }); fail(error); },
+    },
+    settings: {
+      async get(key) { const { data } = await sb.from("settings").select("value").eq("key", key).maybeSingle(); return (data?.value as never) ?? null; },
+      async set(key, value) { const { error } = await sb.from("settings").upsert({ key, value }); fail(error); },
+    },
+    shipping: {
+      async list() { const { data } = await sb.from("shipping_methods").select("*").order("sort"); return (data ?? []) as ShippingMethod[]; },
+      async save(m) { const { error } = await sb.from("shipping_methods").upsert(m); fail(error); },
+      async remove(id) { const { error } = await sb.from("shipping_methods").delete().eq("id", id); fail(error); },
+    },
+    payments: {
+      async list() { const { data } = await sb.from("payment_methods").select("*").order("sort"); return (data ?? []) as PaymentMethod[]; },
+      async save(m) { const { error } = await sb.from("payment_methods").upsert(m); fail(error); },
+    },
+    team: { async list() { const { data } = await sb.from("profiles").select("*").order("created_at"); return (data ?? []) as Profile[]; } },
+    async salesByDay(days) { const { data } = await sb.rpc("sales_by_day", { days }); return ((data ?? []) as SalesDay[]).map((d) => ({ ...d, revenue: Number(d.revenue), orders: Number(d.orders) })); },
+  };
+}
+
+/* ───────────── Demo (localStorage) ───────────── */
+const KEY = "ed-admin-demo-v1";
+type DemoState = { orders: Order[]; products: ShopProduct[]; categories: CategoryRow[]; customers: Customer[]; discounts: Discount[]; pages: Page[]; media: MediaItem[]; settings: Record<string, unknown>; shipping: ShippingMethod[]; payments: PaymentMethod[] };
+
+function seedDemo(): DemoState {
+  const now = Date.now();
+  const iso = (d: number) => new Date(now - d).toISOString();
+  const pick = (s: string) => localProducts.find((p) => p.slug === s)!;
+  const mk = (n: number, daysAgo: number, items: [string, number][], status: Order["status"], pay: Order["payment_status"], provider: string, ship: string, carrier: string, name: string, email: string): Order => {
+    const its = items.map(([s, q]) => ({ slug: s, name: pick(s).name, brand: pick(s).brand, price: pick(s).price, qty: q }));
+    const subtotal = its.reduce((a, i) => a + i.price * i.qty, 0);
+    const shipping = ship.startsWith("pickup") ? 0 : ship === "own_delivery" ? 490 : 79;
+    return { id: `demo-${n}`, number: 1000 + n, customer_email: email, customer_name: name, phone: "+420 777 000 00" + n, shipping_address: { street: "Hlavní 12", city: "Kutná Hora", zip: "284 01", country: "CZ" },
+      items: its, subtotal, shipping_cost: shipping, discount_code: null, discount_amount: 0, total: subtotal + shipping, currency: "CZK", status, payment_provider: provider, payment_status: pay, payment_ref: null,
+      shipping_method: ship, shipping_carrier: carrier, pickup_point: null, tracking_number: status === "fulfilled" ? "Z123456789" : null, label_url: null, notes: null,
+      timeline: [{ at: iso(daysAgo * 864e5), text: "Objednávka vytvořena" }], locale: "cs", created_at: iso(daysAgo * 864e5), updated_at: iso(daysAgo * 864e5) };
+  };
+  const orders = [
+    mk(1, 0, [["lg-oled65b4", 1], ["samsung-hw-q600c", 1]], "paid", "paid", "stripe", "pickup_jenikov", "store", "Jana Novotná", "jana.novotna@example.cz"),
+    mk(2, 1, [["tefal-easy-fry-xxl-ey8018", 1]], "processing", "paid", "gopay", "packeta_point", "packeta", "Petr Svoboda", "petr.svoboda@example.cz"),
+    mk(3, 2, [["bosch-wgg244a0by", 1]], "pending", "unpaid", "bank_transfer", "own_delivery", "delivery", "Obec Vilémov", "obec@vilemov.example.cz"),
+    mk(4, 4, [["makita-dhp485rfj", 1], ["bosch-laser-glm-50-27-cg", 1]], "fulfilled", "paid", "comgate", "ppl", "ppl", "Martin Dvořák", "martin.d@example.cz"),
+    mk(5, 6, [["gorenje-nrk6192aw4", 1]], "paid", "paid", "stripe", "pickup_caslav", "store", "Eva Králová", "eva.kralova@example.cz"),
+    mk(6, 9, [["eta-konvice-ela-1598", 2], ["philips-azur-8000-dst8050", 1]], "fulfilled", "paid", "paypal", "packeta_home", "packeta", "Tomáš Beneš", "tomas.benes@example.cz"),
+    mk(7, 12, [["apple-iphone-16-128gb", 1]], "cancelled", "failed", "stripe", "pickup_svetla", "store", "Lukáš Horák", "lukas.horak@example.cz"),
+    mk(8, 15, [["vari-sekacka-ctp-4650-lpe", 1], ["husqvarna-130-retezova-pila", 1]], "fulfilled", "paid", "bank_transfer", "own_delivery", "delivery", "Statek Hájek", "info@statekhajek.cz"),
+    mk(9, 20, [["samsung-galaxy-a56-5g-128gb", 1]], "fulfilled", "paid", "gopay", "pickup_chotebor", "store", "Karolína Marková", "k.markova@example.cz"),
+    mk(10, 26, [["delonghi-magnifica-start-ecam220-22", 1], ["braun-series-7-71-n1000s", 1]], "fulfilled", "paid", "comgate", "gls", "gls", "Ondřej Fiala", "ondrej.fiala@example.cz"),
+  ];
+  const customers: Customer[] = orders.map((o, i) => ({ id: `c${i}`, email: o.customer_email, name: o.customer_name, phone: o.phone, address: o.shipping_address, notes: null, marketing: i % 2 === 0, created_at: o.created_at }));
+  return {
+    orders,
+    products: localProducts.map((p, i) => ({ ...p, id: `p${i}`, status: "active", stock: isBulky(p.category) ? 3 : 12, images: [], videos: [], description: { cs: "", en: "" }, featured: defaultFeatured.includes(p.slug) })),
+    categories: localCategories.map((c, i) => ({ slug: c.slug, label: c.label, blurb: c.blurb, image_url: null, video_url: null, sort: i })),
+    customers,
+    discounts: [
+      { id: "d1", code: "ELEKTRO10", type: "percent", value: 10, min_total: 1000, starts_at: null, ends_at: null, usage_limit: 100, used: 12, active: true },
+      { id: "d2", code: "DOPRAVAZDARMA", type: "free_shipping", value: 0, min_total: 2000, starts_at: null, ends_at: null, usage_limit: null, used: 31, active: true },
+    ],
+    pages: [{ slug: "home", title: { cs: "Domů", en: "Home" }, sections: defaultHome, status: "published", seo: {}, updated_at: iso(0) }],
+    media: [],
+    settings: {
+      store: { name: company.name, legal: company.legal, address: company.address, phone: company.phone, email: company.email, ico: company.ico, dic: company.dic, hours: company.hours, currency: "CZK", locales: ["cs", "en"], defaultLocale: "cs" },
+      theme: { accent: "#111111", signal: "#d0021b", font: "Inter" },
+      announcement: { enabled: true, text: dict.topbar },
+      taxes: { vatRate: 21, pricesIncludeVat: true },
+      notifications: { orderEmailTo: company.email, customerConfirmation: true },
+    },
+    shipping: defaultShippingMethods,
+    payments: [
+      { id: "stripe", name: { cs: "Platební karta (Stripe)", en: "Card (Stripe)" }, enabled: true, test_mode: true, config: {}, sort: 0 },
+      { id: "gopay", name: { cs: "GoPay", en: "GoPay" }, enabled: true, test_mode: true, config: {}, sort: 1 },
+      { id: "comgate", name: { cs: "Comgate", en: "Comgate" }, enabled: false, test_mode: true, config: {}, sort: 2 },
+      { id: "paypal", name: { cs: "PayPal", en: "PayPal" }, enabled: true, test_mode: true, config: {}, sort: 3 },
+      { id: "bank_transfer", name: { cs: "Bankovní převod", en: "Bank transfer" }, enabled: true, test_mode: false, config: {}, sort: 4 },
+      { id: "cash", name: { cs: "Hotově při odběru", en: "Cash on collection" }, enabled: true, test_mode: false, config: {}, sort: 5 },
+    ],
+  };
+}
+
+function demoRepo(): Repo {
+  const load = (): DemoState => { try { const r = localStorage.getItem(KEY); if (r) return JSON.parse(r); } catch {} const s = seedDemo(); save(s); return s; };
+  const save = (s: DemoState) => { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch {} };
+  const mut = async (fn: (s: DemoState) => void) => { const s = load(); fn(s); save(s); };
+  const uid = () => Math.random().toString(36).slice(2, 10);
+  return {
+    mode: "demo",
+    orders: {
+      async list() { return load().orders; },
+      async get(id) { return load().orders.find((o) => o.id === id) ?? null; },
+      async update(id, patch) { await mut((s) => { const o = s.orders.find((x) => x.id === id); if (o) Object.assign(o, patch, { updated_at: new Date().toISOString() }); }); },
+    },
+    products: {
+      async list() { return load().products; },
+      async get(id) { return load().products.find((p) => p.id === id) ?? null; },
+      async save(p) { let id = p.id ?? `p-${uid()}`; await mut((s) => { const i = s.products.findIndex((x) => x.id === p.id); if (i >= 0) s.products[i] = { ...s.products[i], ...p } as ShopProduct; else s.products.unshift({ specs: [], colors: [], short: { cs: "", en: "" }, price: 0, energy: "—", brand: "", category: "male-spotrebice", name: "", ...p, id } as ShopProduct); }); return id; },
+      async remove(id) { await mut((s) => { s.products = s.products.filter((p) => p.id !== id); }); },
+    },
+    categories: { async list() { return load().categories; }, async save(c) { await mut((s) => { const i = s.categories.findIndex((x) => x.slug === c.slug); if (i >= 0) s.categories[i] = c; else s.categories.push(c); }); } },
+    customers: { async list() { return load().customers; } },
+    discounts: {
+      async list() { return load().discounts; },
+      async save(d) { await mut((s) => { const i = s.discounts.findIndex((x) => x.id === d.id); if (i >= 0) s.discounts[i] = { ...s.discounts[i], ...d } as Discount; else s.discounts.unshift({ id: uid(), used: 0, active: true, min_total: null, starts_at: null, ends_at: null, usage_limit: null, value: 0, type: "percent", code: "", ...d } as Discount); }); },
+      async remove(id) { await mut((s) => { s.discounts = s.discounts.filter((d) => d.id !== id); }); },
+    },
+    pages: {
+      async list() { return load().pages; },
+      async get(slug) { return load().pages.find((p) => p.slug === slug) ?? null; },
+      async save(p) { await mut((s) => { const i = s.pages.findIndex((x) => x.slug === p.slug); const row = { ...p, updated_at: new Date().toISOString() }; if (i >= 0) s.pages[i] = row; else s.pages.push(row); }); },
+      async remove(slug) { await mut((s) => { s.pages = s.pages.filter((p) => p.slug !== slug); }); },
+    },
+    media: {
+      async list() { return load().media; },
+      async upload(file, onProgress, folder) {
+        onProgress?.(30);
+        const url = await new Promise<string>((res) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.readAsDataURL(file); });
+        const item: MediaItem = { id: uid(), path: folder ? `${folder}/${file.name}` : file.name, url: file.size < 1_500_000 ? url : URL.createObjectURL(file), kind: file.type.startsWith("video/") ? "video" : "image", mime: file.type, size: file.size, alt: { cs: "", en: "" }, created_at: new Date().toISOString() };
+        await mut((s) => { s.media.unshift(item); }); onProgress?.(100); return item;
+      },
+      async remove(item) { await mut((s) => { s.media = s.media.filter((m) => m.id !== item.id); }); },
+      async move(item, folder) { const name = item.path.split("/").pop()!; const path = folder ? `${folder}/${name}` : name; const next = { ...item, path }; await mut((s) => { s.media = s.media.map((m) => (m.id === item.id ? next : m)); }); return next; },
+      async listFolders() { return ((load().settings.media_folders as { list?: string[] })?.list) ?? []; },
+      async makeVariants() { return true; },
+      async hasVariants() { return true; },
+      async saveFolders(folders) { await mut((s) => { s.settings.media_folders = { list: folders }; }); },
+    },
+    settings: { async get(key) { return (load().settings[key] as never) ?? null; }, async set(key, value) { await mut((s) => { s.settings[key] = value; }); } },
+    shipping: { async list() { return load().shipping; }, async save(m) { await mut((s) => { const i = s.shipping.findIndex((x) => x.id === m.id); if (i >= 0) s.shipping[i] = m; else s.shipping.push(m); }); }, async remove(id) { await mut((s) => { s.shipping = s.shipping.filter((m) => m.id !== id); }); } },
+    payments: { async list() { return load().payments; }, async save(m) { await mut((s) => { const i = s.payments.findIndex((x) => x.id === m.id); if (i >= 0) s.payments[i] = m; }); } },
+    team: { async list() { return [{ id: "u1", email: company.email, full_name: company.name, role: "owner", created_at: new Date().toISOString() }]; } },
+    async salesByDay(days) {
+      const orders = load().orders;
+      return Array.from({ length: days }, (_, i) => {
+        const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - (days - 1 - i));
+        const day = d.toISOString().slice(0, 10);
+        const os = orders.filter((o) => o.created_at.slice(0, 10) === day && o.status !== "cancelled");
+        return { day, orders: os.length, revenue: os.filter((o) => o.payment_status === "paid").reduce((s, o) => s + o.total, 0) };
+      });
+    },
+  };
+}
+
+let cached: Repo | null = null;
+export function repo(): Repo { if (!cached) cached = supabaseConfigured ? supabaseRepo() : demoRepo(); return cached; }
+export function resetDemo() { try { localStorage.removeItem(KEY); } catch {} cached = null; }
